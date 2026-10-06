@@ -1,0 +1,17 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: my-app
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t webapp:latest .
+      - run: kubectl apply -f k8s/
+      - run: kubectl rollout restart deployment/webapp
