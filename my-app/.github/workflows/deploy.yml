@@ -1,19 +1,17 @@
-name: CI/CD
+name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: my-app
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t webapp:${{ github.sha }} .
-
-      - name: Deploy to Kubernetes
-        run: |
-          kubectl apply -f k8s/
-          kubectl set image deployment/webapp webapp=webapp:${{ github.sha }}
-          kubectl rollout status deployment/webapp --timeout=90s
+      - run: docker build -t webapp:latest .
+      - run: kubectl apply -f k8s/
+      - run: kubectl rollout restart deployment/webapp
