@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: webapp
-          image: webapp:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/mh469arya/webapp:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
 ---

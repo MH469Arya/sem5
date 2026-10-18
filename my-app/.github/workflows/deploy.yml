@@ -5,15 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# ─────────────────────────────────────────────
-# Stage 1 → Build   (GitHub-hosted runner)
-# Stage 2 → Test    (GitHub-hosted runner)
-# Stage 3 → Deploy  (manual — see README / run locally with Docker Desktop)
-# ─────────────────────────────────────────────
+env:
+  IMAGE: ghcr.io/mh469arya/webapp
+
+permissions:
+  contents: read
+  packages: write   # needed to push to GHCR
 
 jobs:
 
-  # ── Stage 1: Build ──────────────────────────
+  # ── Stage 1: Build ──────────────────────────────────────────
   build:
     name: 🔨 Build
     runs-on: ubuntu-latest
@@ -33,14 +34,32 @@ jobs:
         working-directory: my-app
         run: npm install --omit=dev
 
-      - name: Confirm build artefacts
+      - name: Verify build artefacts
         working-directory: my-app
         run: |
-          echo "── Build complete ──"
-          echo "app.js       : $(test -f app.js && echo OK || echo MISSING)"
-          echo "public/index : $(test -f public/index.html && echo OK || echo MISSING)"
+          echo "── Checking artefacts ──"
+          test -f app.js             && echo "✔ app.js found"             || (echo "✘ app.js missing"             && exit 1)
+          test -f public/index.html  && echo "✔ public/index.html found"  || (echo "✘ public/index.html missing"  && exit 1)
+          test -f Dockerfile         && echo "✔ Dockerfile found"         || (echo "✘ Dockerfile missing"         && exit 1)
+          echo "✅ Build stage passed"
 
-  # ── Stage 2: Test ───────────────────────────
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./my-app
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  # ── Stage 2: Test ───────────────────────────────────────────
   test:
     name: 🧪 Test
     runs-on: ubuntu-latest
@@ -65,7 +84,10 @@ jobs:
         working-directory: my-app
         run: npm test
 
-  # ── Stage 3: Deploy ─────────────────────────
+      - name: Test summary
+        run: echo "✅ Test stage passed — all smoke tests green"
+
+  # ── Stage 3: Deploy ─────────────────────────────────────────
   deploy:
     name: 🚀 Deploy
     runs-on: ubuntu-latest
@@ -75,16 +97,29 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Deploy instructions
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Set up kubeconfig
         run: |
-          echo "=========================================="
-          echo "  ✅ Build & Test passed!"
-          echo "  🚀 To deploy manually with Docker Desktop"
-          echo "     run the commands below on your machine:"
-          echo ""
-          echo "  cd my-app"
-          echo "  docker build -t webapp:latest ."
-          echo "  docker run -d -p 3000:3000 --name calculator webapp:latest"
-          echo ""
-          echo "  Then open: http://localhost:3000"
-          echo "=========================================="
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Apply Kubernetes manifests
+        run: kubectl apply -f my-app/k8s/
+
+      - name: Update image to latest build
+        run: |
+          kubectl set image deployment/webapp \
+            webapp=${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/webapp --timeout=120s
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Deploy stage passed"
+          echo "🌐 App running at http://localhost:30080"
