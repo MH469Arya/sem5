@@ -1,23 +1,97 @@
-name: Deploy
+name: CI/CD Pipeline
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
+# ─────────────────────────────────────────────
+# Stage 1 → Build
+# Stage 2 → Test   (needs: build)
+# Stage 3 → Deploy (needs: test)
+# ─────────────────────────────────────────────
+
 jobs:
-  deploy:
+
+  # ── Stage 1: Build ──────────────────────────
+  build:
+    name: 🔨 Build
     runs-on: self-hosted
     defaults:
       run:
         working-directory: my-app
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      # Docker and Kubernetes steps are temporarily disabled.
-      # Re-enable them once the runner environment has Docker and kubectl configured.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-app/package.json
 
-      # - run: docker build -t webapp:latest .
-      # - run: kubectl apply -f k8s/
-      # - run: kubectl rollout restart deployment/webapp
+      - name: Install dependencies
+        run: npm install --omit=dev
 
-      - run: echo "Deploy steps are paused. Enable Docker/k8s steps when the runner is ready."
+      - name: Confirm build artefacts
+        run: |
+          echo "── Build complete ──"
+          echo "app.js        : $(test -f app.js && echo OK || echo MISSING)"
+          echo "public/index  : $(test -f public/index.html && echo OK || echo MISSING)"
+
+  # ── Stage 2: Test ───────────────────────────
+  test:
+    name: 🧪 Test
+    runs-on: self-hosted
+    needs: build
+    defaults:
+      run:
+        working-directory: my-app
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: my-app/package.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+  # ── Stage 3: Deploy ─────────────────────────
+  deploy:
+    name: 🚀 Deploy
+    runs-on: self-hosted
+    needs: test
+    defaults:
+      run:
+        working-directory: my-app
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Docker & Kubernetes steps are disabled until the runner
+      # environment has Docker and kubectl properly configured.
+      # Uncomment the three lines below to activate deployment.
+
+      # - name: Build Docker image
+      #   run: docker build -t webapp:latest .
+
+      # - name: Apply Kubernetes manifests
+      #   run: kubectl apply -f k8s/
+
+      # - name: Restart deployment rollout
+      #   run: kubectl rollout restart deployment/webapp
+
+      - name: Deploy placeholder
+        run: echo "🚀 Deploy stage reached — Docker/k8s steps will be enabled once the runner is ready."
