@@ -10,7 +10,7 @@ env:
 
 permissions:
   contents: read
-  packages: write   # needed to push to GHCR
+  packages: write
 
 jobs:
 
@@ -37,10 +37,9 @@ jobs:
       - name: Verify build artefacts
         working-directory: my-app
         run: |
-          echo "── Checking artefacts ──"
-          test -f app.js             && echo "✔ app.js found"             || (echo "✘ app.js missing"             && exit 1)
-          test -f public/index.html  && echo "✔ public/index.html found"  || (echo "✘ public/index.html missing"  && exit 1)
-          test -f Dockerfile         && echo "✔ Dockerfile found"         || (echo "✘ Dockerfile missing"         && exit 1)
+          test -f app.js            && echo "✔ app.js found"            || (echo "✘ app.js missing"            && exit 1)
+          test -f public/index.html && echo "✔ public/index.html found" || (echo "✘ public/index.html missing" && exit 1)
+          test -f Dockerfile        && echo "✔ Dockerfile found"        || (echo "✘ Dockerfile missing"        && exit 1)
           echo "✅ Build stage passed"
 
       - name: Log in to GitHub Container Registry
@@ -87,39 +86,35 @@ jobs:
       - name: Test summary
         run: echo "✅ Test stage passed — all smoke tests green"
 
-  # ── Stage 3: Deploy ─────────────────────────────────────────
+  # ── Stage 3: Deploy (runs on your machine via self-hosted runner) ──
   deploy:
     name: 🚀 Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
+      - name: Build Docker image
+        working-directory: my-app
+        run: docker build -t webapp:latest .
 
-      - name: Set up kubeconfig
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+      - name: Stop and remove existing container (if any)
+        run: docker rm -f calculator 2>$null; exit 0
+
+      - name: Run new container
+        run: docker run -d -p 3000:3000 --name calculator webapp:latest
 
       - name: Apply Kubernetes manifests
-        run: kubectl apply -f my-app/k8s/
+        working-directory: my-app
+        run: kubectl apply -f k8s/
 
-      - name: Update image to latest build
-        run: |
-          kubectl set image deployment/webapp \
-            webapp=${{ env.IMAGE }}:${{ github.sha }}
+      - name: Restart Kubernetes deployment
+        run: kubectl rollout restart deployment/webapp
 
       - name: Wait for rollout
         run: kubectl rollout status deployment/webapp --timeout=120s
 
-      - name: Deployment summary
-        run: |
-          echo "✅ Deploy stage passed"
-          echo "🌐 App running at http://localhost:30080"
+      - name: Done
+        run: echo "✅ Deploy stage passed — app live at http://localhost:3000"
