@@ -12,6 +12,12 @@ jobs:
         working-directory: my-app
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t webapp:latest .
-      - run: kubectl apply -f k8s/
-      - run: kubectl rollout restart deployment/webapp
+
+      # Docker and Kubernetes steps are temporarily disabled.
+      # Re-enable them once the runner environment has Docker and kubectl configured.
+
+      # - run: docker build -t webapp:latest .
+      # - run: kubectl apply -f k8s/
+      # - run: kubectl rollout restart deployment/webapp
+
+      - run: echo "Deploy steps are paused. Enable Docker/k8s steps when the runner is ready."
